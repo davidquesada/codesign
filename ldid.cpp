@@ -35,6 +35,9 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <plist/plist.h>
+#include "appbundle.h"
+
 struct fat_header {
     uint32_t magic;
     uint32_t nfat_arch;
@@ -636,7 +639,9 @@ class Pointer {
 #define CSMAGIC_ENTITLEMENTS       uint32_t(0xfade7171)
 
 #define CSSLOT_CODEDIRECTORY uint32_t(0)
+#define CSSLOT_INFOSLOT      uint32_t(1)
 #define CSSLOT_REQUIREMENTS  uint32_t(2)
+#define CSSLOT_RESOURCEDIR   uint32_t(3)
 #define CSSLOT_ENTITLEMENTS  uint32_t(5)
 
 struct BlobIndex {
@@ -734,7 +739,7 @@ int main(int argc, const char *argv[]) {
     uintptr_t noffset(_not(uintptr_t));
     uintptr_t woffset(_not(uintptr_t));
 
-    std::vector<std::string> files;
+    std::string filename;
 
     if (argc == 1) {
         fprintf(stderr, "usage: %s -S[entitlements.xml] <binary>\n", argv[0]);
@@ -745,8 +750,13 @@ int main(int argc, const char *argv[]) {
     }
 
     for (int argi(1); argi != argc; ++argi)
-        if (argv[argi][0] != '-')
-            files.push_back(argv[argi]);
+        if (argv[argi][0] != '-') {
+            if (filename.size()) {
+                fprintf(stderr, "%s: multiple file names given.\n", argv[0]);
+                exit(1);
+            }
+            filename = argv[argi];
+        }
         else switch (argv[argi][1]) {
             case 'R': flag_R = true; break;
             case 'r': flag_r = true; break;
@@ -818,12 +828,26 @@ int main(int argc, const char *argv[]) {
             break;
         }
 
-    if (files.empty()) usage: {
+    if (filename.empty()) usage: {
         exit(0);
     }
 
     size_t filei(0), filee(0);
-    _foreach (file, files) try {
+    try {
+        
+        AppBundle bundle(filename);
+
+        if (!bundle.isValid()) {
+            fprintf(stderr, "%s: %s is not an app bundle.\n", argv[0], filename.c_str());
+            exit(1);
+        }
+        if (!bundle.generateCodeSignatureDirectory()) {
+            fprintf(stderr, "%s: Unable to generate code signature directory.\n", argv[0]);
+            exit(1);
+        }
+
+        std::string file = bundle.fullBinaryPath();
+
         const char *path(file.c_str());
         const char *base = strrchr(path, '/');
         char *temp(NULL), *dir;
@@ -900,7 +924,7 @@ int main(int argc, const char *argv[]) {
             asprintf(&temp, "%s.%s.cs", dir, base);
             const char *allocate = getenv("CODESIGN_ALLOCATE");
             if (allocate == NULL)
-                allocate = "codesign_allocate";
+                allocate = "arm-apple-darwin-codesign_allocate";
 
             std::vector<CodesignAllocation> allocations; {
                 FatHeader fat_header(Map(path));
@@ -982,7 +1006,7 @@ int main(int argc, const char *argv[]) {
 
                     size_t alloc(0);
                     alloc += sizeof(struct SuperBlob);
-                    uint32_t special(0);
+                    uint32_t special(CSSLOT_ENTITLEMENTS);
 
                     special = std::max(special, CSSLOT_CODEDIRECTORY);
                     alloc += sizeof(struct BlobIndex);
@@ -1031,7 +1055,6 @@ int main(int argc, const char *argv[]) {
             _syscall(waitpid(pid, &status, 0));
             _assert(WIFEXITED(status));
             _assert(WEXITSTATUS(status) == 0);
-
             }
         }
 
@@ -1208,7 +1231,7 @@ int main(int argc, const char *argv[]) {
                 strcpy(reinterpret_cast<char *>(blob + offset), base);
                 offset += strlen(base) + 1;
 
-                uint32_t special = xmld == NULL ? CSSLOT_REQUIREMENTS : CSSLOT_ENTITLEMENTS;
+                uint32_t special = 5;
                 directory->nSpecialSlots = Swap(special);
 
                 uint8_t (*hashes)[20] = reinterpret_cast<uint8_t (*)[20]>(blob + offset);
@@ -1257,6 +1280,13 @@ int main(int argc, const char *argv[]) {
                         uint32_t offset = Swap(super->index[index].offset);
                         struct Blob *local = (struct Blob *) (blob + offset);
                         sha1((uint8_t *) (hashes - type), (uint8_t *) local, Swap(local->length));
+                    }
+                }
+
+                // Copy hashes from the app bundle object.
+                for (size_t index(1); index <= 5 && (index <= special); ++index) {
+                    if (strncmp(bundle.specialHashes[index], "\0\0\0\0\0\0", 6)) {
+                        memcpy((uint8_t *) (hashes - index), (uint8_t *)bundle.specialHashes[index], 20);
                     }
                 }
 
