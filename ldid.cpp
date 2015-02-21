@@ -37,6 +37,7 @@ extern "C" {
 
 #include <plist/plist.h>
 #include "appbundle.h"
+#include "identity.h"
 
 struct fat_header {
     uint32_t magic;
@@ -644,6 +645,8 @@ class Pointer {
 #define CSSLOT_RESOURCEDIR   uint32_t(3)
 #define CSSLOT_ENTITLEMENTS  uint32_t(5)
 
+#define CSSLOT_SIGNATURESLOT uint32_t(0x10000)
+
 struct BlobIndex {
     uint32_t type;
     uint32_t offset;
@@ -740,6 +743,7 @@ int main(int argc, const char *argv[]) {
     uintptr_t woffset(_not(uintptr_t));
 
     std::string filename;
+    std::string identity;
 
     if (argc == 1) {
         fprintf(stderr, "usage: %s -S[entitlements.xml] <binary>\n", argv[0]);
@@ -823,6 +827,10 @@ int main(int argc, const char *argv[]) {
                 _assert(arge == argv[argi] + strlen(argv[argi]));
             } break;
 
+            case 'I':
+                identity = &argv[argi][2];
+              break;
+
             default:
                 goto usage;
             break;
@@ -836,6 +844,7 @@ int main(int argc, const char *argv[]) {
     try {
         
         AppBundle bundle(filename);
+        std::string bundleIdentifier;
 
         if (!bundle.isValid()) {
             fprintf(stderr, "%s: %s is not an app bundle.\n", argv[0], filename.c_str());
@@ -851,6 +860,9 @@ int main(int argc, const char *argv[]) {
         const char *path(file.c_str());
         const char *base = strrchr(path, '/');
         char *temp(NULL), *dir;
+
+        // We'll need to get the bundle identifier from the info plist.
+//        bundleIdentifier = base;
 
         if (base != NULL)
             dir = strndup_(path, base++ - path + 1);
@@ -1011,7 +1023,7 @@ int main(int argc, const char *argv[]) {
                     special = std::max(special, CSSLOT_CODEDIRECTORY);
                     alloc += sizeof(struct BlobIndex);
                     alloc += sizeof(struct CodeDirectory);
-                    alloc += strlen(base) + 1;
+                    alloc += bundleIdentifier.size() + 1;
 
                     special = std::max(special, CSSLOT_REQUIREMENTS);
                     alloc += sizeof(struct BlobIndex);
@@ -1023,6 +1035,10 @@ int main(int argc, const char *argv[]) {
                         alloc += sizeof(struct Blob);
                         alloc += xmls;
                     }
+
+                    // Code signature w/ dev + root + appleWWDR certs is about 4.3k
+                    if (identity.size())
+                        alloc += 5000;
 
                     size_t normal((allocation.size_ + 0x1000 - 1) / 0x1000);
                     alloc += (special + normal) * 0x14;
@@ -1208,6 +1224,7 @@ int main(int argc, const char *argv[]) {
                 super->blob.magic = Swap(CSMAGIC_EMBEDDED_SIGNATURE);
 
                 uint32_t count = xmld == NULL ? 2 : 3;
+                if (identity.size()) count++;
                 uint32_t offset = sizeof(struct SuperBlob) + count * sizeof(struct BlobIndex);
 
                 super->index[0].type = Swap(CSSLOT_CODEDIRECTORY);
@@ -1228,8 +1245,8 @@ int main(int argc, const char *argv[]) {
                 directory->spare2 = Swap(uint32_t(0));
 
                 directory->identOffset = Swap(offset - begin);
-                strcpy(reinterpret_cast<char *>(blob + offset), base);
-                offset += strlen(base) + 1;
+                strcpy(reinterpret_cast<char *>(blob + offset), bundleIdentifier.c_str());
+                offset += bundleIdentifier.size() + 1;
 
                 uint32_t special = 5;
                 directory->nSpecialSlots = Swap(special);
@@ -1289,6 +1306,32 @@ int main(int argc, const char *argv[]) {
                         memcpy((uint8_t *) (hashes - index), (uint8_t *)bundle.specialHashes[index], 20);
                     }
                 }
+
+                // Check if we're adding an actual signature.
+                if (identity.size()) {
+                    Identity ident(identity);
+
+                    if (!ident.found()) {
+                        fprintf(stderr, "Can't find signing identity %s\n", identity.c_str());
+                        exit(1);
+                    }
+
+                    std::vector<uint8_t> cms = ident.signMessage((const char *)directory, Swap(directory->blob.length));
+
+                    super->index[count - 1].type = Swap(CSSLOT_SIGNATURESLOT);
+                    super->index[count - 1].offset = Swap(offset);
+
+                    uint32_t begin = offset;
+                    struct Blob *signature = reinterpret_cast<struct Blob *>(blob + begin);
+                    offset += sizeof(struct Blob);
+                    signature->magic = Swap(0xFADE0B01);
+                    signature->length = Swap(uint32_t(sizeof(struct Blob) + cms.size()));
+
+
+                    memcpy(blob + offset, cms.data(), cms.size());
+                    offset += cms.size();
+                }
+
 
                 super->count = Swap(count);
                 super->blob.length = Swap(offset);

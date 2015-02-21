@@ -1,6 +1,6 @@
 BINARY = codesign
 
-OBJS = ldid.o sha1.o lookup2.o appbundle.o
+OBJS = ldid.o sha1.o lookup2.o appbundle.o identity.o
 
 CFLAGS = -Wall -Wextra -I. -g -Wno-deprecated-declarations
 LDFLAGS = 
