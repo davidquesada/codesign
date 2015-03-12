@@ -299,6 +299,7 @@ static bool generateCodeResourcesFile(const string &binaryName, const string &bu
     outfile.write(xmldata, xmllen);
 
     free(xmldata);
+    plist_free(toplevel);
 
     return true;
 }

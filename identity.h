@@ -10,6 +10,7 @@ class Identity
 void *impl;
 public:
     Identity(const std::string &name);
+    ~Identity();
     bool found();
     std::vector<uint8_t> signMessage(const char *msg, int len);
 };

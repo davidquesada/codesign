@@ -29,6 +29,11 @@ Identity::Identity(const string &name) : impl(0)
         delete imp;
 }
 
+Identity::~Identity()
+{
+    delete (Identity_impl *)this->impl;
+}
+
 bool Identity::found()
 {
     return !!impl;
