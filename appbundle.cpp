@@ -64,6 +64,14 @@ void AppBundle::loadInfoPlist()
     plist_get_string_val(bundleIdentifierNode, &ptr);
     this->identifier = ptr;
     free(ptr);
+    ptr = NULL;
+
+    plist_t bundleExecutableNode = plist_dict_get_item(root, "CFBundleExecutable");
+    plist_get_string_val(bundleExecutableNode, &ptr);
+    this->_fbinary = _fpath + "/" + ptr;
+    free(ptr);
+    ptr = NULL;
+
     plist_free(root);
 }
 
@@ -303,6 +311,7 @@ AppBundle::AppBundle(const string &p)
     if (!_valid)
         return;
     findPaths(p);
+    loadInfoPlist();
 }
 
 void AppBundle::findPaths(const string &path)
@@ -321,7 +330,7 @@ void AppBundle::findPaths(const string &path)
     _fpath = fullpath;
     _basename = basename;
     _appname = basename.substr(0, basename.size() - 4);
-    _fbinary = _fpath + "/" + _appname;
+    _fbinary = "";
 }
 
 static void hashFile(const char *filename, char *hash)

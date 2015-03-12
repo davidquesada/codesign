@@ -854,7 +854,6 @@ int main(int argc, const char *argv[]) {
             fprintf(stderr, "%s: Unable to generate code signature directory.\n", argv[0]);
             exit(1);
         }
-        bundle.loadInfoPlist();
 
         std::string file = bundle.fullBinaryPath();
 
