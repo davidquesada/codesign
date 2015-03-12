@@ -36,6 +36,37 @@ bool isAppBundle(const std::string &p)
     return true;
 }
 
+void AppBundle::loadInfoPlist()
+{
+    string path = _fpath + "/Info.plist";
+    char buf[4096];
+    FILE *file;
+    vector<char> data;
+    size_t read;
+    plist_t root = 0;
+    char *ptr = 0;
+
+    file = fopen(path.c_str(), "r");
+    while ((read = fread(buf, 1, sizeof(buf), file)))
+        data.insert(data.end(), buf, &buf[read]);
+    _assert(!ferror(file));
+    fclose(file);
+
+    if (!data.size())
+        return;
+
+    if (data[0] == '<')
+        plist_from_xml(data.data(), data.size(), &root);
+    else
+        plist_from_bin(data.data(), data.size(), &root);
+
+    plist_t bundleIdentifierNode = plist_dict_get_item(root, "CFBundleIdentifier");
+    plist_get_string_val(bundleIdentifierNode, &ptr);
+    this->identifier = ptr;
+    free(ptr);
+    plist_free(root);
+}
+
 bool AppBundle::generateCodeSignatureDirectory()
 {
     string fullpath = _fpath;

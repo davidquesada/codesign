@@ -854,6 +854,7 @@ int main(int argc, const char *argv[]) {
             fprintf(stderr, "%s: Unable to generate code signature directory.\n", argv[0]);
             exit(1);
         }
+        bundle.loadInfoPlist();
 
         std::string file = bundle.fullBinaryPath();
 
@@ -861,8 +862,8 @@ int main(int argc, const char *argv[]) {
         const char *base = strrchr(path, '/');
         char *temp(NULL), *dir;
 
-        // We'll need to get the bundle identifier from the info plist.
-//        bundleIdentifier = base;
+        bundleIdentifier = bundle.bundleIdentifier();
+        fprintf(stderr, "Found bundle ID: %s\n", bundleIdentifier.c_str());
 
         if (base != NULL)
             dir = strndup_(path, base++ - path + 1);

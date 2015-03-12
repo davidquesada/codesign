@@ -27,6 +27,7 @@ public:
     char specialHashes[6][20];
 
 public:
+    void loadInfoPlist();
     bool generateCodeSignatureDirectory();
 
 public:
@@ -35,6 +36,7 @@ public:
 
     const std::string &fullPath()           { return _fpath; }
     const std::string &fullBinaryPath()     { return _fbinary; }
+    const std::string &bundleIdentifier()   { return identifier; }
 };
 
 #endif//_APPBUNDLE_H_
