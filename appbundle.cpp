@@ -55,10 +55,10 @@ void AppBundle::loadInfoPlist()
     if (!data.size())
         return;
 
-    if (data[0] == '<')
-        plist_from_xml(data.data(), data.size(), &root);
-    else
+    if (data.size() > 6 && !memcmp(&data[0], "bplist", 6))
         plist_from_bin(data.data(), data.size(), &root);
+    else
+        plist_from_xml(data.data(), data.size(), &root);
 
     plist_t bundleIdentifierNode = plist_dict_get_item(root, "CFBundleIdentifier");
     plist_get_string_val(bundleIdentifierNode, &ptr);
